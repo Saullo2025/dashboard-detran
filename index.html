@@ -296,9 +296,7 @@
 </div>
 
 <script>
-const SHEET_ID = '1B9NvolgnaUJg18_T6QD7qioXNBf5aW5rOYoBvDJkaYo';
-const GID      = '1477061132';
-const CSV_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
+const API_URL = 'https://script.google.com/macros/s/AKfycbz67xWNfVI1V0Ufq9TYor_kc4s6eZ2W3CdG4dhXtga8ZQ1fFw0YCWgbT_xbo1zZmLmMJA/exec';
 
 let DB = [];
 let filterStatus = '';
@@ -306,18 +304,17 @@ let chartStatus = null, chartModelo = null;
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
 async function loadFromSheets() {
-  const btn    = document.getElementById('btnSync');
-  const dot    = document.getElementById('pulseDot');
-  const upd    = document.getElementById('lastUpdate');
+  const btn = document.getElementById('btnSync');
+  const dot = document.getElementById('pulseDot');
+  const upd = document.getElementById('lastUpdate');
   btn.classList.add('syncing');
   showBanner('loading', '⏳ Buscando dados do Google Sheets…');
   try {
-    const res = await fetch(CSV_URL + '&cachebust=' + Date.now());
+    const res = await fetch(API_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const text = await res.text();
-    const parsed = parseCSV(text);
-    if (parsed.length === 0) throw new Error('Nenhum dado encontrado. Verifique se a aba está correta.');
-    DB = parsed;
+    const json = await res.json();
+    if (!Array.isArray(json) || json.length === 0) throw new Error('Nenhum dado retornado.');
+    DB = parseJSON(json);
     dot.style.background = 'var(--green)';
     dot.style.boxShadow  = '0 0 8px var(--green)';
     dot.classList.add('pulse-anim');
@@ -330,55 +327,41 @@ async function loadFromSheets() {
     dot.style.boxShadow  = '0 0 8px var(--red)';
     dot.classList.remove('pulse-anim');
     upd.textContent = 'Erro ao carregar';
-    showBanner('error', '⚠️  Não foi possível carregar os dados. Certifique-se de que a planilha está pública: Compartilhar → Qualquer pessoa com o link → Leitor. Erro: ' + err.message);
+    showBanner('error', '⚠️  Erro ao carregar: ' + err.message + '. Tente Sincronizar novamente.');
   } finally {
     btn.classList.remove('syncing');
   }
 }
 
-// ── PARSE CSV ─────────────────────────────────────────────────────────────────
-function parseCSV(raw) {
-  const lines = raw.trim().split('\n').filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const headers = splitLine(lines[0]).map(h => h.trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,''));
-
-  const idx = {
-    equip:    pick(headers,['equipamento','equip','codigo','equipment']),
-    endereco: pick(headers,['endereco','address','local','logradouro']),
-    modelo:   pick(headers,['modelo','model','tipo']),
-    faixas:   pick(headers,['faixas','faixa','lanes']),
-    etapa:    pick(headers,['etapa','stage','fase']),
-    status:   pick(headers,['status','estado']),
-    equipe:   pick(headers,['equipe','team','responsavel']),
-    data:     pick(headers,['data','date']),
-    obs:      pick(headers,['observacao','obs','nota','notas','comentario','observa']),
-  };
-
-  return lines.slice(1).map((line, i) => {
-    const v = splitLine(line);
-    const g = k => idx[k] >= 0 ? (v[idx[k]]||'').trim() : '';
+// ── PARSE JSON (Apps Script) ─────────────────────────────────────────────────
+function parseJSON(rows) {
+  return rows.map((row, i) => {
+    // Normalize keys: remove accents, lowercase
+    const norm = {};
+    Object.keys(row).forEach(k => {
+      const nk = k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+      norm[nk] = String(row[k] ?? '').trim();
+    });
+    const g = (...candidates) => {
+      for (const c of candidates) {
+        const key = Object.keys(norm).find(k => k.includes(c));
+        if (key && norm[key]) return norm[key];
+      }
+      return '';
+    };
     return {
-      id:       i+1,
-      equip:    g('equip'),
-      endereco: g('endereco'),
-      modelo:   g('modelo'),
-      faixas:   parseInt(g('faixas')) || 0,
-      etapa:    g('etapa'),
-      status:   normStatus(g('status')),
-      equipe:   g('equipe') || 'A definir',
-      data:     normDate(g('data')),
-      obs:      g('obs'),
+      id:       i + 1,
+      equip:    g('equipamento','equip','codigo'),
+      endereco: g('endereco','address','local','logradouro'),
+      modelo:   g('modelo','model','tipo'),
+      faixas:   parseInt(g('faixas','faixa')) || 0,
+      etapa:    g('etapa','stage','fase'),
+      status:   normStatus(g('status','estado')),
+      equipe:   g('equipe','team','responsavel') || 'A definir',
+      data:     normDate(g('data','date')),
+      obs:      g('observacao','obs','nota','notas','comentario'),
     };
   }).filter(r => r.equip || r.modelo);
-}
-
-function pick(headers, candidates) {
-  for (const c of candidates) {
-    const i = headers.findIndex(h => h.includes(c));
-    if (i >= 0) return i;
-  }
-  return -1;
 }
 
 function normStatus(s) {
@@ -398,16 +381,7 @@ function normDate(s) {
   return '';
 }
 
-function splitLine(line) {
-  const r = []; let cur = '', inQ = false;
-  for (const c of line) {
-    if (c === '"') { inQ = !inQ; }
-    else if (c === ',' && !inQ) { r.push(cur); cur = ''; }
-    else cur += c;
-  }
-  r.push(cur);
-  return r;
-}
+// splitLine removed (using JSON API now)
 
 // ── BANNER ────────────────────────────────────────────────────────────────────
 function showBanner(type, msg) {
