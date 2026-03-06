@@ -182,6 +182,10 @@
       <select id="filterEquipe"><option value="">Todas as equipes</option></select>
     </div>
     <div>
+      <div class="filter-label">Base Operacional</div>
+      <select id="filterBase"><option value="">Todas as bases</option></select>
+    </div>
+    <div>
       <div class="sidebar-section-title">Status</div>
       <div class="status-chips">
         <div class="chip active" data-status="" onclick="toggleStatus(this)">
@@ -282,7 +286,7 @@
         <table>
           <thead>
             <tr>
-              <th>Equipamento</th><th>Endereço</th><th>Modelo</th><th>Faixas</th>
+              <th>Equipamento</th><th>Base Operacional</th><th>Endereço</th><th>Modelo</th><th>Faixas</th>
               <th>Etapa</th><th>Status</th><th>Equipe</th><th>Data</th><th>Observação</th>
             </tr>
           </thead>
@@ -357,6 +361,7 @@ function parseJSON(rows) {
       faixas:   parseInt(g('faixas','faixa')) || 0,
       etapa:    g('etapa','stage','fase'),
       status:   normStatus(g('status','estado')),
+      base:     g('base operacional','base','base_operacional','operacional'),
       equipe:   g('equipe','team','responsavel') || 'A definir',
       data:     normDate(g('data','date')),
       obs:      g('observacao','obs','nota','notas','comentario'),
@@ -397,13 +402,15 @@ function getFiltered() {
   const modelo = document.getElementById('filterModelo').value;
   const etapa  = document.getElementById('filterEtapa').value;
   const equipe = document.getElementById('filterEquipe').value;
+  const base   = document.getElementById('filterBase').value;
   return DB.filter(r => {
     if (filterStatus && r.status !== filterStatus) return false;
     if (modelo && r.modelo !== modelo) return false;
     if (etapa  && r.etapa  !== etapa)  return false;
     if (equipe && r.equipe !== equipe) return false;
+    if (base   && r.base   !== base)   return false;
     if (search) {
-      const haystack = [r.equip,r.modelo,r.obs,r.endereco,r.equipe,r.etapa].join(' ').toLowerCase();
+      const haystack = [r.equip,r.modelo,r.obs,r.endereco,r.equipe,r.etapa,r.base].join(' ').toLowerCase();
       if (!haystack.includes(search)) return false;
     }
     return true;
@@ -421,6 +428,7 @@ function populateSelects() {
   fill('filterModelo', uniq('modelo'), 'Todos os modelos');
   fill('filterEtapa',  uniq('etapa'),  'Todas as etapas');
   fill('filterEquipe', uniq('equipe'), 'Todas as equipes');
+  fill('filterBase',   uniq('base'),   'Todas as bases');
 }
 
 function toggleStatus(el) {
@@ -432,13 +440,13 @@ function toggleStatus(el) {
 
 function resetFilters() {
   filterStatus = '';
-  ['searchInput','filterModelo','filterEtapa','filterEquipe'].forEach(id => document.getElementById(id).value = '');
+  ['searchInput','filterModelo','filterEtapa','filterEquipe','filterBase'].forEach(id => document.getElementById(id).value = '');
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
   document.querySelector('.chip[data-status=""]').classList.add('active');
   render();
 }
 
-['searchInput','filterModelo','filterEtapa','filterEquipe'].forEach(id => {
+['searchInput','filterModelo','filterEtapa','filterEquipe','filterBase'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener('input',  render);
   el.addEventListener('change', render);
@@ -507,6 +515,7 @@ function render() {
     const df  = r.data ? new Date(r.data+'T00:00:00').toLocaleDateString('pt-BR') : '—';
     return `<tr>
       <td><span class="eq-code">${r.equip||'—'}</span></td>
+      <td><span class="team-tag" style="background:rgba(124,58,237,0.15);color:#a78bfa">${r.base||'—'}</span></td>
       <td style="font-size:12px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.endereco}">${r.endereco||'—'}</td>
       <td>${r.modelo}</td>
       <td style="text-align:center">${r.faixas||'—'}</td>
